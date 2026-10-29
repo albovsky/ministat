@@ -1,0 +1,7 @@
+/.tools/
+/target/
+/dist/
+/scratch/
+*.log
+.DS_Store
+._*
