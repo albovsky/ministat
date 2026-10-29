@@ -14,6 +14,7 @@ use std::{
 };
 
 pub fn collect(state_dir: &Path, config: Config, once: bool) -> io::Result<()> {
+    let collection_started = Instant::now();
     let _lock = CollectorLock::acquire(&state_dir.join("collector.lock"))?;
     let health = Arc::new(Mutex::new(Health::default()));
     let shared = health.clone();
@@ -58,8 +59,18 @@ pub fn collect(state_dir: &Path, config: Config, once: bool) -> io::Result<()> {
             .clone();
         let snapshot = sampler.sample(storage, disk_time, report);
         write_json(&state_dir.join("snapshot.json"), &snapshot)?;
-        if once && snapshot.cpu_percent.is_some() {
-            return Ok(());
+        if once {
+            if snapshot.cpu_percent.is_some()
+                && snapshot.health.sampled_at_unix > 0
+                && snapshot.disks_sampled_at_unix > 0
+            {
+                return Ok(());
+            }
+            if collection_started.elapsed() >= Duration::from_secs(30) {
+                return Err(io::Error::other(
+                    "Initial health or disk probes did not finish within 30 seconds",
+                ));
+            }
         }
         thread::sleep(Duration::from_secs(2).saturating_sub(started.elapsed()));
     }
