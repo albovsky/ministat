@@ -1,0 +1,26 @@
+[package]
+name = "ministat"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+description = "A quiet native Mac server monitor, with a boot collector and JSON CLI"
+license = "MIT"
+
+[dependencies]
+libc = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sysinfo = { version = "0.39", default-features = false, features = ["system"] }
+ureq = { version = "3", default-features = false }
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", features = ["NSTimer", "NSRunLoop"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["objc2-core-foundation", "NSApplication", "NSRunningApplication", "NSResponder", "NSStatusBar", "NSStatusItem", "NSStatusBarButton", "NSButton", "NSControl", "NSView", "NSMenu", "NSMenuItem", "NSFont", "NSFontDescriptor", "NSAttributedString", "NSStringDrawing", "NSColor", "NSPanel", "NSWindow", "NSScreen", "NSTextField", "NSGraphics", "NSCell", "NSButtonCell", "NSPasteboard", "NSWorkspace", "NSImage", "NSBezierPath", "NSVisualEffectView", "NSProgressIndicator"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
