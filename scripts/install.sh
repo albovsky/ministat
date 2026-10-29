@@ -51,10 +51,12 @@ menu = {'Label':'com.albovsky.ministat.menu', 'RunAtLoad':True,
  'ProgramArguments':['/usr/bin/open','-a',app]}
 for name, value in [('collector',daemon),('preview',preview),('menu',menu)]:
  (state/'install'/f'{name}.plist').write_bytes(plistlib.dumps(value))
-(state/'install'/'owner').write_text(f'{user}\n{uid}\n')
 PY
-cp "$PROJECT_ROOT/scripts/install-boot-service.sh" "$STATE/install-boot-service.sh"
-chmod 700 "$STATE/install-boot-service.sh"
+# Retire the old direct-sudo entry point. Future admin commands verify a root-owned copy.
+if [ -f "$STATE/install-boot-service.sh" ]; then
+    mv "$STATE/install-boot-service.sh" "$BACKUP/legacy-boot-helper.sh"
+    chmod 600 "$BACKUP/legacy-boot-helper.sh"
+fi
 cp "$STATE/install/menu.plist" "$HOME/Library/LaunchAgents/com.albovsky.ministat.menu.plist"
 launchctl bootout "gui/$SERVICE_UID/com.albovsky.ministat.menu" 2>/dev/null || true
 # Existing menu processes must exit so open launches the newly installed release.
@@ -67,5 +69,6 @@ if launchctl print system/com.albovsky.ministat.collector >/dev/null 2>&1; then
 else
     launchctl bootout "gui/$SERVICE_UID/com.albovsky.ministat.preview" 2>/dev/null || true
     launchctl bootstrap "gui/$SERVICE_UID" "$STATE/install/preview.plist"
-    printf '\nApp and CLI installed. To enable collection before login, run:\n\n  sudo "%s/install-boot-service.sh"\n\n' "$STATE"
+    printf '\nApp and CLI installed. Inspect and run this command once to enable collection before login:\n\n'
+    /bin/sh "$PROJECT_ROOT/scripts/boot-service-command.sh"
 fi

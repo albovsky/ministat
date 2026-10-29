@@ -106,11 +106,17 @@ Run `./scripts/install.sh` as the target account. It stages verified app/binary
 copies, preserves previous versions in the private `rollback/` directory, installs
 the JSON CLI link and menu login job, and starts a temporary login collector if
 the system service has not been installed yet. Run the printed administrator
-command once to enable collection before login:
+command once to enable collection before login. To print it again:
 
 ```sh
-sudo "$HOME/Library/Application Support/Ministat/install-boot-service.sh"
+./scripts/boot-service-command.sh
 ```
+
+The printed command freezes the helper's SHA-256, copies it to a private root-owned
+directory, then verifies that copy before running it. A changed home-directory
+candidate is rejected. The helper generates the daemon plist from fixed settings
+and OS account details; it never loads a user-writable plist as root. Do not run
+the home-directory helper directly with sudo.
 
 The installer replaces paths atomically and restarts owned processes on update.
 The system job is `com.albovsky.ministat.collector`; the login job is
@@ -119,7 +125,8 @@ The system job is `com.albovsky.ministat.collector`; the login job is
 To disable boot and menu startup while retaining all files:
 
 ```sh
-sudo "$HOME/Library/Application Support/Ministat/install-boot-service.sh" --remove
+./scripts/boot-service-command.sh --remove
+# Inspect and run its printed command.
 ```
 
 To roll back an update, use `./scripts/rollback.sh` with the absolute path to a

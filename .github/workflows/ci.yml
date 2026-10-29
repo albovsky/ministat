@@ -29,5 +29,7 @@ jobs:
         run: cargo +1.99.1 clippy --locked --all-targets -- -D warnings
       - name: Test
         run: cargo +1.99.1 test --locked
+      - name: Verify administrator staging
+        run: python3 -m unittest discover -s scripts -p 'test_*.py'
       - name: Build release
         run: cargo +1.99.1 build --locked --release
