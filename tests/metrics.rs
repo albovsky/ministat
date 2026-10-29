@@ -1,6 +1,6 @@
 use ministat::{
     metrics::{Sampler, disks},
-    model::{Health, now_unix},
+    model::{Disk, Health, StatusView, now_unix},
 };
 
 #[test]
@@ -10,6 +10,38 @@ fn an_existing_directory_is_not_a_mounted_external_drive() {
     assert!(rows[0].mounted);
     assert!(!rows[1].mounted);
     assert_eq!(rows[1].used_percent, None);
+}
+
+#[test]
+fn disk_gauges_clear_expired_disk_readings_while_cpu_samples_remain_current() {
+    let mut snapshot = Sampler::default().sample(
+        vec![Disk::mounted(
+            "Internal",
+            "/System/Volumes/Data",
+            1000,
+            400,
+            400,
+        )],
+        now_unix(),
+        Health::default(),
+    );
+    let now = now_unix();
+    let boot = snapshot.boot_time_unix;
+    snapshot.sampled_at_unix = now;
+    snapshot.disks_sampled_at_unix = now - 91;
+    assert_eq!(
+        StatusView::new(snapshot.clone(), now, boot).disk_gauge_percent(0),
+        0.0
+    );
+    snapshot.disks_sampled_at_unix = now;
+    let current = StatusView::new(snapshot.clone(), now, boot);
+    assert_eq!(current.disk_gauge_percent(0), 60.0);
+    assert_eq!(current.disk_gauge_percent(5), 0.0);
+    snapshot.sampled_at_unix = now - 16;
+    assert_eq!(
+        StatusView::new(snapshot, now, boot).disk_gauge_percent(0),
+        0.0
+    );
 }
 
 #[test]

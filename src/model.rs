@@ -123,6 +123,17 @@ pub struct StatusView {
     pub snapshot: Snapshot,
 }
 impl StatusView {
+    pub fn disk_gauge_percent(&self, index: usize) -> f64 {
+        if self.freshness != Freshness::Current || self.disks_freshness != Freshness::Current {
+            return 0.0;
+        }
+        self.snapshot
+            .disks
+            .get(index)
+            .and_then(|disk| disk.used_percent)
+            .unwrap_or(0.0)
+    }
+
     pub fn new(mut snapshot: Snapshot, now: u64, boot: u64) -> Self {
         let mut state = freshness(snapshot.sampled_at_unix, now, STALE_AFTER_SECONDS);
         if snapshot.boot_time_unix != boot {

@@ -190,10 +190,13 @@ impl Dashboard {
                 s.memory.total_bytes as f64 / 1073741824.0
             ),
         );
-        for (disk, key, detail, bar_key) in [
+        for (index, (disk, key, detail, bar_key)) in [
             (&s.disks[0], "int", "internal_detail", "internal"),
             (&s.disks[1], "ext", "external_detail", "external"),
-        ] {
+        ]
+        .into_iter()
+        .enumerate()
+        {
             self.text(
                 key,
                 &if !current {
@@ -219,11 +222,7 @@ impl Dashboard {
                 },
             );
             if let Some(bar) = self.bars.get(bar_key) {
-                bar.setDoubleValue(if current {
-                    disk.used_percent.unwrap_or(0.0)
-                } else {
-                    0.0
-                });
+                bar.setDoubleValue(view.disk_gauge_percent(index));
             }
         }
         for (key, service) in [
