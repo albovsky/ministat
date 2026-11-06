@@ -2,6 +2,7 @@ name: Rust checks
 
 on:
   pull_request:
+  workflow_dispatch:
   push:
     branches: [main]
 
@@ -15,21 +16,71 @@ concurrency:
 jobs:
   check:
     name: macOS validation
-    runs-on: macos-15
+    if: github.repository == 'albovsky/ministat' && github.actor == 'albovsky' && github.triggering_actor == 'albovsky' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login == 'albovsky'))
+    runs-on: [self-hosted, macOS, ARM64, ministat-ci]
     timeout-minutes: 20
+    env:
+      CI_WORK_ROOT: /Volumes/Media/PettCI/repositories/ministat/work/${{ github.run_id }}-${{ github.run_attempt }}
+      CARGO_HOME: /Volumes/Media/PettCI/repositories/ministat/tools/cargo
+      RUSTUP_HOME: /Volumes/Media/PettCI/repositories/ministat/tools/rustup
+      CARGO_TARGET_DIR: /Volumes/Media/PettCI/repositories/ministat/cache/target
     steps:
+      - name: Select Mini tools and verify SSD
+        shell: bash
+        run: |
+          set -euo pipefail
+          /sbin/mount | grep -F ' on /Volumes/Media (' >/dev/null
+          case "$GITHUB_WORKSPACE" in
+            /Users/albovsky/actions-runners/ministat-macmini/_work/*) ;;
+            *) echo 'Unexpected runner workspace' >&2; exit 1 ;;
+          esac
+          {
+            echo "/opt/homebrew/opt/ruby/bin"
+            echo "/opt/homebrew/opt/node@22/bin"
+            echo "/opt/homebrew/bin"
+            echo "$CARGO_HOME/bin"
+          } >> "$GITHUB_PATH"
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
+      - name: Stage checkout on SSD
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$CI_WORK_ROOT"
+          rsync -a --delete "$GITHUB_WORKSPACE/" "$CI_WORK_ROOT/"
+
+      - name: Enforce local CI resources
+        working-directory: ${{ env.CI_WORK_ROOT }}
+        run: |
+          ruby scripts/verify_ci_resource_policy.rb
+          ruby scripts/ci_resource_policy_test.rb
+
       - name: Install Rust
+        working-directory: ${{ env.CI_WORK_ROOT }}
         run: rustup toolchain install 1.99.1 --profile minimal --component rustfmt,clippy
       - name: Check formatting
+        working-directory: ${{ env.CI_WORK_ROOT }}
         run: cargo +1.99.1 fmt --check
       - name: Lint
+        working-directory: ${{ env.CI_WORK_ROOT }}
         run: cargo +1.99.1 clippy --locked --all-targets -- -D warnings
       - name: Test
+        working-directory: ${{ env.CI_WORK_ROOT }}
         run: cargo +1.99.1 test --locked
       - name: Verify administrator staging
+        working-directory: ${{ env.CI_WORK_ROOT }}
         run: python3 -m unittest discover -s scripts -p 'test_*.py'
       - name: Build release
+        working-directory: ${{ env.CI_WORK_ROOT }}
         run: cargo +1.99.1 build --locked --release
+
+      - name: Remove disposable checkout
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$CI_WORK_ROOT" in
+            /Volumes/Media/PettCI/repositories/ministat/work/[0-9]*-[0-9]*) rm -rf "$CI_WORK_ROOT" ;;
+            *) echo 'Refusing unexpected cleanup path' >&2; exit 1 ;;
+          esac
