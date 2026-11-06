@@ -20,16 +20,16 @@ jobs:
     runs-on: [self-hosted, macOS, ARM64, ministat-ci]
     timeout-minutes: 20
     env:
-      CI_WORK_ROOT: /Volumes/Media/PettCI/repositories/ministat/work/${{ github.run_id }}-${{ github.run_attempt }}
-      CARGO_HOME: /Volumes/Media/PettCI/repositories/ministat/tools/cargo
-      RUSTUP_HOME: /Volumes/Media/PettCI/repositories/ministat/tools/rustup
-      CARGO_TARGET_DIR: /Volumes/Media/PettCI/repositories/ministat/cache/target
+      CI_WORK_ROOT: /Users/albovsky/ci-data/ministat/work/${{ github.run_id }}-${{ github.run_attempt }}
+      CARGO_BUILD_JOBS: 2
+      CARGO_HOME: /Users/albovsky/ci-data/ministat/tools/cargo
+      RUSTUP_HOME: /Users/albovsky/ci-data/ministat/tools/rustup
+      CARGO_TARGET_DIR: /Users/albovsky/ci-data/ministat/cache/target
     steps:
-      - name: Select Mini tools and verify SSD
+      - name: Select Mini tools
         shell: bash
         run: |
           set -euo pipefail
-          /sbin/mount | grep -F ' on /Volumes/Media (' >/dev/null
           case "$GITHUB_WORKSPACE" in
             /Users/albovsky/actions-runners/ministat-macmini/_work/*) ;;
             *) echo 'Unexpected runner workspace' >&2; exit 1 ;;
@@ -43,10 +43,20 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
-      - name: Stage checkout on SSD
+      - name: Stage checkout locally
         shell: bash
         run: |
           set -euo pipefail
+          cache_root=/Users/albovsky/ci-data/ministat/cache
+          mkdir -p "$cache_root"
+          cache_kib=$(du -sk "$cache_root" | awk '{print $1}')
+          free_kib=$(df -Pk "$cache_root" | awk 'NR==2 {print $4}')
+          if [ "$cache_kib" -gt 3145728 ] || [ "$free_kib" -lt 62914560 ]; then
+            rm -rf "$cache_root"
+            mkdir -p "$cache_root"
+          fi
+          free_kib=$(df -Pk "$cache_root" | awk 'NR==2 {print $4}')
+          [ "$free_kib" -ge 62914560 ] || { echo 'CI requires 60 GiB free on the Mini' >&2; exit 1; }
           mkdir -p "$CI_WORK_ROOT"
           rsync -a --delete "$GITHUB_WORKSPACE/" "$CI_WORK_ROOT/"
 
@@ -81,6 +91,10 @@ jobs:
         run: |
           set -euo pipefail
           case "$CI_WORK_ROOT" in
-            /Volumes/Media/PettCI/repositories/ministat/work/[0-9]*-[0-9]*) rm -rf "$CI_WORK_ROOT" ;;
+            /Users/albovsky/ci-data/ministat/work/[0-9]*-[0-9]*) rm -rf "$CI_WORK_ROOT" ;;
             *) echo 'Refusing unexpected cleanup path' >&2; exit 1 ;;
           esac
+          cache_root=/Users/albovsky/ci-data/ministat/cache
+          if [ -d "$cache_root" ] && [ "$(du -sk "$cache_root" | awk '{print $1}')" -gt 3145728 ]; then
+            rm -rf "$cache_root"
+          fi
