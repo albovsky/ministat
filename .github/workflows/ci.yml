@@ -35,9 +35,9 @@ jobs:
             *) echo 'Unexpected runner workspace' >&2; exit 1 ;;
           esac
           {
-            echo "/opt/homebrew/opt/ruby/bin"
-            echo "/opt/homebrew/opt/node@22/bin"
             echo "/opt/homebrew/bin"
+            echo "/opt/homebrew/opt/node@22/bin"
+            echo "/opt/homebrew/opt/ruby/bin"
             echo "$CARGO_HOME/bin"
           } >> "$GITHUB_PATH"
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
