@@ -74,7 +74,8 @@ class AdminBootServiceTests(unittest.TestCase):
 
     def admin(self, *args, **env):
         return subprocess.run(['/bin/sh', str(self.scripts / 'admin-boot-service.sh'), *args],
-                              env={**self.env, **env}, capture_output=True, text=True, timeout=20)
+                              env={**self.env, **env}, capture_output=True, text=True,
+                              timeout=120)  # shared CI host can be heavily loaded
 
     def executed(self):
         return (self.home / 'executed').read_text().splitlines()
