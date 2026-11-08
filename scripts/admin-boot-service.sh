@@ -26,8 +26,9 @@ REF=$2
 REPO=${MINISTAT_REPO:-albovsky/ministat}
 GH=${MINISTAT_GH:-gh}
 SSH=${MINISTAT_SSH:-ssh}
+# Explicit characters: bracket ranges such as a-f are locale-dependent.
 case "$REF" in
-    *[!0-9a-f]*) echo 'The commit must be a full lowercase 40-character SHA.' >&2; exit 2 ;;
+    *[!0123456789abcdef]*) echo 'The commit must be a full lowercase 40-character SHA.' >&2; exit 2 ;;
 esac
 if [ "${#REF}" -ne 40 ]; then
     echo 'The commit must be a full lowercase 40-character SHA.' >&2

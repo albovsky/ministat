@@ -67,7 +67,8 @@ class AdminBootServiceTests(unittest.TestCase):
             (bin_dir / name).write_text(body)
             (bin_dir / name).chmod(0o755)
         self.ssh_log = self.root / 'ssh-host'
-        self.env = {**os.environ, 'HOME': str(self.home), 'TMPDIR': str(self.root),
+        # A UTF-8 locale makes shell ranges like [a-f] match uppercase; keep it pinned.
+        self.env = {**os.environ, 'LC_ALL': 'en_US.UTF-8', 'HOME': str(self.home), 'TMPDIR': str(self.root),
                     'MINISTAT_GH': str(bin_dir / 'gh'), 'MINISTAT_SSH': str(bin_dir / 'ssh'),
                     'FAKE_HELPER': str(self.helper), 'FAKE_COMPARE': 'behind',
                     'FAKE_ROOT': str(self.root), 'FAKE_SSH_LOG': str(self.ssh_log)}
