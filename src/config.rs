@@ -40,13 +40,16 @@ impl Config {
             Self::for_home(&home_dir()?)
         };
         let config: Self = value;
+        // `..` could name a different directory once symlinks resolve; require a plain path.
+        let plain = |p: &Path| !p.components().any(|c| c == std::path::Component::ParentDir);
         if !config.external_mount.is_absolute()
+            || !plain(&config.external_mount)
             || !config.homekit_data.is_absolute()
             || config.runner_roots.len() > 10
             || config.runner_roots.iter().any(|p| !p.is_absolute())
         {
             return Err(io::Error::other(
-                "Configuration paths must be absolute; at most 10 CI runners",
+                "Configuration paths must be absolute (no `..` in external_mount); at most 10 CI runners",
             ));
         }
         Ok(config)

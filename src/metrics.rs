@@ -2,34 +2,40 @@ use crate::model::{Disk, Health, Memory, SCHEMA_VERSION, Snapshot, now_unix};
 use std::{
     collections::VecDeque,
     ffi::{CStr, CString},
-    mem, ptr,
+    mem,
+    os::unix::ffi::OsStrExt,
+    ptr,
 };
 use sysinfo::{MemoryRefreshKind, System};
 
 pub fn disks(external: &std::path::Path) -> Vec<Disk> {
     vec![
-        disk_at("Internal", "/System/Volumes/Data"),
-        disk_at("Media", &external.to_string_lossy()),
+        disk_at("Internal", std::path::Path::new("/System/Volumes/Data")),
+        disk_at("Media", external),
     ]
 }
 
-fn disk_at(name: &str, path: &str) -> Disk {
-    let Ok(cpath) = CString::new(path) else {
-        return Disk::missing(name, path);
+fn disk_at(name: &str, path: &std::path::Path) -> Disk {
+    // Lexical form: `/Volumes/Media/` and `/Volumes/./Media` name the same mount point.
+    let path: std::path::PathBuf = path.components().collect();
+    let label = path.to_string_lossy();
+    let Ok(cpath) = CString::new(path.as_os_str().as_bytes()) else {
+        return Disk::missing(name, &label);
     };
     // SAFETY: caller-owned output, valid C string; statfs refreshes the selected filesystem.
     unsafe {
         let mut stats: libc::statfs = mem::zeroed();
         if libc::statfs(cpath.as_ptr(), &mut stats) != 0 {
-            return Disk::missing(name, path);
+            return Disk::missing(name, &label);
         }
         // An existing /Volumes/Media directory is not proof the external disk is mounted.
-        if CStr::from_ptr(stats.f_mntonname.as_ptr()).to_string_lossy() != path {
-            return Disk::missing(name, path);
+        let mounted_on = CStr::from_ptr(stats.f_mntonname.as_ptr()).to_bytes();
+        if std::path::Path::new(std::ffi::OsStr::from_bytes(mounted_on)) != path {
+            return Disk::missing(name, &label);
         }
         Disk::mounted(
             name,
-            path,
+            &label,
             stats.f_blocks.saturating_mul(stats.f_bsize as u64),
             stats.f_bfree.saturating_mul(stats.f_bsize as u64),
             stats.f_bavail.saturating_mul(stats.f_bsize as u64),

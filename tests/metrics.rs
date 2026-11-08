@@ -57,3 +57,22 @@ fn cpu_warms_up_before_reporting_a_percentage() {
     assert_eq!(second.cpu_history.len(), 1);
     assert!(second.memory.total_bytes > 0);
 }
+
+#[test]
+fn equivalent_spellings_of_a_mount_point_are_mounted() {
+    for spelling in [
+        "/System/Volumes/Data/",
+        "/System/Volumes//Data",
+        "/System/./Volumes/Data/",
+    ] {
+        let row = &disks(std::path::Path::new(spelling))[1];
+        assert!(row.mounted, "{spelling} should be the Data volume");
+        assert_eq!(row.mount, "/System/Volumes/Data");
+        assert!(row.total_bytes.unwrap() > 0);
+    }
+}
+
+#[test]
+fn a_directory_inside_another_mount_is_still_not_mounted() {
+    assert!(!disks(std::path::Path::new("/System/Volumes/Data/private/"))[1].mounted);
+}
