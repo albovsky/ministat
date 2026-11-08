@@ -1,0 +1,100 @@
+name: Rust checks
+
+on:
+  pull_request:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rust-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: macOS validation
+    if: github.repository == 'albovsky/ministat' && github.actor == 'albovsky' && github.triggering_actor == 'albovsky' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login == 'albovsky'))
+    runs-on: [self-hosted, macOS, ARM64, ministat-ci]
+    timeout-minutes: 20
+    env:
+      CI_WORK_ROOT: /Users/albovsky/ci-data/ministat/work/${{ github.run_id }}-${{ github.run_attempt }}
+      CARGO_BUILD_JOBS: 2
+      CARGO_HOME: /Users/albovsky/ci-data/ministat/tools/cargo
+      RUSTUP_HOME: /Users/albovsky/ci-data/ministat/tools/rustup
+      CARGO_TARGET_DIR: /Users/albovsky/ci-data/ministat/cache/target
+    steps:
+      - name: Select Mini tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$GITHUB_WORKSPACE" in
+            /Users/albovsky/actions-runners/ministat-macmini/_work/*) ;;
+            *) echo 'Unexpected runner workspace' >&2; exit 1 ;;
+          esac
+          {
+            echo "/opt/homebrew/bin"
+            echo "/opt/homebrew/opt/node@22/bin"
+            echo "/opt/homebrew/opt/ruby/bin"
+            echo "$CARGO_HOME/bin"
+          } >> "$GITHUB_PATH"
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Stage checkout locally
+        shell: bash
+        run: |
+          set -euo pipefail
+          cache_root=/Users/albovsky/ci-data/ministat/cache
+          mkdir -p "$cache_root"
+          cache_kib=$(du -sk "$cache_root" | awk '{print $1}')
+          free_kib=$(df -Pk "$cache_root" | awk 'NR==2 {print $4}')
+          if [ "$cache_kib" -gt 3145728 ] || [ "$free_kib" -lt 62914560 ]; then
+            rm -rf "$cache_root"
+            mkdir -p "$cache_root"
+          fi
+          free_kib=$(df -Pk "$cache_root" | awk 'NR==2 {print $4}')
+          [ "$free_kib" -ge 62914560 ] || { echo 'CI requires 60 GiB free on the Mini' >&2; exit 1; }
+          mkdir -p "$CI_WORK_ROOT"
+          rsync -a --delete "$GITHUB_WORKSPACE/" "$CI_WORK_ROOT/"
+
+      - name: Enforce local CI resources
+        working-directory: ${{ env.CI_WORK_ROOT }}
+        run: |
+          ruby scripts/verify_ci_resource_policy.rb
+          ruby scripts/ci_resource_policy_test.rb
+
+      - name: Install Rust
+        working-directory: ${{ env.CI_WORK_ROOT }}
+        run: rustup toolchain install 1.99.1 --profile minimal --component rustfmt,clippy
+      - name: Check formatting
+        working-directory: ${{ env.CI_WORK_ROOT }}
+        run: cargo +1.99.1 fmt --check
+      - name: Lint
+        working-directory: ${{ env.CI_WORK_ROOT }}
+        run: cargo +1.99.1 clippy --locked --all-targets -- -D warnings
+      - name: Test
+        working-directory: ${{ env.CI_WORK_ROOT }}
+        run: cargo +1.99.1 test --locked
+      - name: Verify administrator staging
+        working-directory: ${{ env.CI_WORK_ROOT }}
+        run: python3 -m unittest discover -s scripts -p 'test_*.py'
+      - name: Build release
+        working-directory: ${{ env.CI_WORK_ROOT }}
+        run: cargo +1.99.1 build --locked --release
+
+      - name: Remove disposable checkout
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$CI_WORK_ROOT" in
+            /Users/albovsky/ci-data/ministat/work/[0-9]*-[0-9]*) rm -rf "$CI_WORK_ROOT" ;;
+            *) echo 'Refusing unexpected cleanup path' >&2; exit 1 ;;
+          esac
+          cache_root=/Users/albovsky/ci-data/ministat/cache
+          if [ -d "$cache_root" ] && [ "$(du -sk "$cache_root" | awk '{print $1}')" -gt 3145728 ]; then
+            rm -rf "$cache_root"
+          fi
