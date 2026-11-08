@@ -18,10 +18,10 @@ class CIResourcePolicyTest < Minitest::Test
     end
   end
   def local_job(steps = [])
-    {'runs-on'=>%w[self-hosted macOS ARM64 ministat-ci], 'steps'=>steps}
+    {'runs-on'=>'macos-latest', 'steps'=>steps}
   end
-  def test_hosted_dynamic_and_reusable_jobs_are_rejected
-    ['ubuntu-latest', {'group'=>'hosted'}, '${{ matrix.runner }}', ['self-hosted','ubuntu-latest']].each do |runner|
+  def test_self_hosted_dynamic_and_reusable_jobs_are_rejected
+    [%w[self-hosted macOS ARM64 ministat-ci], 'self-hosted', ['macos-latest'], {'group'=>'hosted'}, '${{ matrix.runner }}', 'ubuntu-latest'].each do |runner|
       refute check('runs-on'=>runner,'steps'=>[]).last.success?
     end
     refute check('uses'=>'owner/repo/.github/workflows/build.yml@main').last.success?
