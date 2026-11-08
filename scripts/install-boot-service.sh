@@ -1,8 +1,9 @@
 #!/bin/sh
-# Execute only from the checksum-verified, root-owned copy made by the printed command.
+# Root runs this only as the root-owned copy sent by scripts/admin-boot-service.sh,
+# fetched from GitHub at a reviewed commit. Never run a home-directory copy with sudo.
 set -eu
 if [ "$(/usr/bin/id -u)" -ne 0 ]; then
-    echo 'Run ./scripts/boot-service-command.sh as your normal account, then use its printed command.' >&2
+    echo 'Run ./scripts/admin-boot-service.sh from your administration Mac.' >&2
     exit 1
 fi
 SERVICE_USER=${1:?Missing account}

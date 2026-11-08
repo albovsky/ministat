@@ -1,5 +1,6 @@
 #!/bin/sh
-# Run as the target user. This stages the exact boot-service candidate, without sudo.
+# Run as the target user, without sudo. The boot service is installed separately from
+# the administration Mac (scripts/admin-boot-service.sh).
 set -eu
 if [ "$(id -u)" -eq 0 ]; then echo 'Run install.sh as your normal user.' >&2; exit 1; fi
 PROJECT_ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
@@ -69,6 +70,6 @@ if launchctl print system/com.albovsky.ministat.collector >/dev/null 2>&1; then
 else
     launchctl bootout "gui/$SERVICE_UID/com.albovsky.ministat.preview" 2>/dev/null || true
     launchctl bootstrap "gui/$SERVICE_UID" "$STATE/install/preview.plist"
-    printf '\nApp and CLI installed. Inspect and run this command once to enable collection before login:\n\n'
+    printf '\nApp and CLI installed. To enable collection before login:\n\n'
     /bin/sh "$PROJECT_ROOT/scripts/boot-service-command.sh"
 fi

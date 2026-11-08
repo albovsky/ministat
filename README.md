@@ -105,18 +105,26 @@ directory to `ministat menu --preview --state-dir /tmp/ministat-preview`.
 Run `./scripts/install.sh` as the target account. It stages verified app/binary
 copies, preserves previous versions in the private `rollback/` directory, installs
 the JSON CLI link and menu login job, and starts a temporary login collector if
-the system service has not been installed yet. Run the printed administrator
-command once to enable collection before login. To print it again:
+the system service has not been installed yet. To enable collection before
+login, run this once **on the administration Mac**, in a ministat checkout:
 
 ```sh
-./scripts/boot-service-command.sh
+./scripts/admin-boot-service.sh <ssh-host> <full-commit-sha>
 ```
 
-The printed command freezes the helper's SHA-256, copies it to a private root-owned
-directory, then verifies that copy before running it. A changed home-directory
-candidate is rejected. The helper generates the daemon plist from fixed settings
-and OS account details; it never loads a user-writable plist as root. Do not run
-the home-directory helper directly with sudo.
+The root helper never comes from the monitored account. The script fetches
+`scripts/install-boot-service.sh` from GitHub at that commit (by default it must
+already be on the default branch; `--unmerged` overrides this with a warning),
+prints its SHA-256, and sends the bytes inside the SSH command. `sudo` on the host
+writes them to a private root-owned directory, checks the digest and runs that
+copy for the account `sudo` reports. The helper generates the daemon plist from
+fixed settings and OS account details; it never loads a user-writable plist as
+root. Do not run a home-directory copy of the helper with sudo.
+
+Residual risk: you still type the `sudo` password into an SSH session of the
+monitored account. If that account is already compromised, its shell can capture
+the password; this flow only guarantees which helper root executes.
+`./scripts/boot-service-command.sh` on the host prints these instructions.
 
 The installer replaces paths atomically and restarts owned processes on update.
 The system job is `com.albovsky.ministat.collector`; the login job is
@@ -125,8 +133,8 @@ The system job is `com.albovsky.ministat.collector`; the login job is
 To disable boot and menu startup while retaining all files:
 
 ```sh
-./scripts/boot-service-command.sh --remove
-# Inspect and run its printed command.
+# On the administration Mac:
+./scripts/admin-boot-service.sh --remove <ssh-host> <full-commit-sha>
 ```
 
 To roll back an update, use `./scripts/rollback.sh` with the absolute path to a
