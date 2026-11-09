@@ -349,11 +349,17 @@ pub fn tailscale_state(status: &Value, now: u64) -> Service {
     service(state, summary, details)
 }
 
-/// Runs `program args`, returning stdout only if it exits successfully within `timeout`.
-fn run_with_deadline(program: &Path, args: &[&str], timeout: Duration) -> io::Result<Vec<u8>> {
+/// Runs `program args` with extra `env`, returning stdout only if it exits successfully within `timeout`.
+fn run_with_deadline(
+    program: &Path,
+    args: &[&str],
+    env: &[(&str, &str)],
+    timeout: Duration,
+) -> io::Result<Vec<u8>> {
     let mut child = Command::new(program)
         .args(args)
         .env("LC_ALL", "C")
+        .envs(env.iter().copied())
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -389,13 +395,17 @@ fn run_with_deadline(program: &Path, args: &[&str], timeout: Duration) -> io::Re
     Ok(bytes)
 }
 
-fn tailscale(config: &Config) -> Service {
+/// Tailscale health from `config.tailscale_cli`, bounded to 3 seconds.
+pub fn tailscale_health(config: &Config) -> Service {
     if !config.tailscale_cli.is_file() {
         return service(State::Unknown, "Tailscale CLI not found", json!({}));
     }
+    // The macOS app binary acts as a CLI only when TERM is set; without it (as under
+    // launchd) it tries to start the GUI and exits 0 with an empty stdout.
     let status = run_with_deadline(
         &config.tailscale_cli,
         &["status", "--json", "--peers=false"],
+        &[("TERM", "dumb")],
         Duration::from_secs(3),
     )
     .ok()
@@ -443,6 +453,6 @@ pub fn check_health(config: &Config) -> Health {
             .as_ref(),
             config.hermes_port,
         ),
-        tailscale: tailscale(config),
+        tailscale: tailscale_health(config),
     }
 }
