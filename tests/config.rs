@@ -81,3 +81,24 @@ fn a_config_file_may_omit_runner_roots() {
     std::fs::write(&path, config.to_string()).unwrap();
     assert!(Config::load(&path).unwrap().runner_roots.is_none());
 }
+
+#[test]
+fn hermes_and_tailscale_settings_have_defaults_and_must_be_absolute() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("config.json");
+    let mut value = serde_json::json!({
+        "external_mount": "/Volumes/Media",
+        "homekit_data": "/tmp/homekit",
+        "jellyfin_port": 8096,
+    });
+    std::fs::write(&path, value.to_string()).unwrap();
+    let config = Config::load(&path).unwrap();
+    assert_eq!(config.hermes_port, 9120);
+    assert_eq!(
+        config.tailscale_cli,
+        std::path::PathBuf::from("/Applications/Tailscale.app/Contents/MacOS/Tailscale")
+    );
+    value["tailscale_cli"] = "tailscale".into();
+    std::fs::write(&path, value.to_string()).unwrap();
+    assert!(Config::load(&path).is_err());
+}

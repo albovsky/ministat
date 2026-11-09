@@ -68,6 +68,16 @@ pub struct Memory {
     pub pressure: String,
 }
 
+/// Run-queue load averages. On macOS, sustained load well above `logical_cpus`
+/// means work is waiting for a core even when CPU utilization looks moderate.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Load {
+    pub one_minute: f64,
+    pub five_minutes: f64,
+    pub fifteen_minutes: f64,
+    pub logical_cpus: usize,
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum State {
@@ -91,6 +101,22 @@ pub struct Health {
     pub homekit: Service,
     pub jellyfin: Service,
     pub ci: Service,
+    #[serde(default)]
+    pub hermes: Service,
+    #[serde(default)]
+    pub tailscale: Service,
+}
+
+impl Health {
+    pub fn services(&self) -> [(&'static str, &Service); 5] {
+        [
+            ("HomeKit", &self.homekit),
+            ("Jellyfin", &self.jellyfin),
+            ("CI", &self.ci),
+            ("Hermes", &self.hermes),
+            ("Tailscale", &self.tailscale),
+        ]
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -104,6 +130,8 @@ pub struct Snapshot {
     pub awake_seconds: u64,
     pub cpu_percent: Option<f32>,
     pub cpu_history: Vec<f32>,
+    #[serde(default)]
+    pub load: Option<Load>,
     pub memory: Memory,
     pub disks: Vec<Disk>,
     #[serde(default)]
@@ -148,6 +176,8 @@ impl StatusView {
                 &mut snapshot.health.homekit,
                 &mut snapshot.health.jellyfin,
                 &mut snapshot.health.ci,
+                &mut snapshot.health.hermes,
+                &mut snapshot.health.tailscale,
             ] {
                 service.state = State::Unknown;
                 service.summary = "Waiting for current health data".into();

@@ -8,9 +8,9 @@ use serde_json::{Value, json};
 use std::{
     io::{self, Read},
     net::{IpAddr, SocketAddr, TcpStream},
-    path::PathBuf,
-    process::Command,
-    time::Duration,
+    path::{Path, PathBuf},
+    process::{Command, Stdio},
+    time::{Duration, Instant},
 };
 
 pub fn http_get(
@@ -214,6 +214,198 @@ pub fn ci_state(processes: &[Process], roots: &[PathBuf]) -> Service {
     )
 }
 
+/// Hermes `/api/status`: healthy when the gateway runs and the overall status is ok.
+/// `None` means the endpoint did not answer 200 within the deadline.
+pub fn hermes_state(status: Option<&Value>, port: u16) -> Service {
+    let Some(status) = status else {
+        return service(
+            State::Down,
+            "Status endpoint not responding",
+            json!({"port": port}),
+        );
+    };
+    let (Some(running), Some(overall)) = (
+        status["gateway_running"].as_bool(),
+        status["overall"].as_str(),
+    ) else {
+        return service(
+            State::Unknown,
+            "Invalid status response",
+            json!({"port": port}),
+        );
+    };
+    let version = status["version"].as_str().unwrap_or("unknown");
+    let details = json!({"port": port, "version": version, "overall": overall,
+        "gateway_state": status["gateway_state"].as_str()});
+    if !running {
+        service(State::Down, "Gateway stopped", details)
+    } else if overall != "ok" {
+        service(State::Degraded, format!("Status {overall}"), details)
+    } else {
+        service(
+            State::Healthy,
+            format!("v{version} · gateway running"),
+            details,
+        )
+    }
+}
+
+/// Seconds since the Unix epoch for an RFC 3339 time such as Go's
+/// `2027-05-04T04:29:10.123Z` or `2027-05-04T06:29:10+02:00`. Times before 1970,
+/// including Go's zero time, are `None`.
+pub fn unix_from_rfc3339(text: &str) -> Option<u64> {
+    let number = |range: std::ops::Range<usize>| -> Option<i64> {
+        let digits = text.get(range)?;
+        digits
+            .bytes()
+            .all(|b| b.is_ascii_digit())
+            .then(|| digits.parse().ok())?
+    };
+    let bytes = text.as_bytes();
+    if bytes.len() < 20 || [bytes[4], bytes[7], bytes[10], bytes[13], bytes[16]] != *b"--T::" {
+        return None;
+    }
+    let (year, month, day) = (number(0..4)?, number(5..7)?, number(8..10)?);
+    let (hour, minute, second) = (number(11..13)?, number(14..16)?, number(17..19)?);
+    if !(1..=12).contains(&month)
+        || !(1..=31).contains(&day)
+        || hour > 23
+        || minute > 59
+        || second > 60
+    {
+        return None;
+    }
+    let mut zone = &text[19..];
+    if let Some(fraction) = zone.strip_prefix('.') {
+        let digits = fraction.bytes().take_while(u8::is_ascii_digit).count();
+        if digits == 0 {
+            return None;
+        }
+        zone = &fraction[digits..];
+    }
+    let offset = match zone.as_bytes() {
+        b"Z" | b"z" => 0,
+        [sign @ (b'+' | b'-'), h1, h2, b':', m1, m2]
+            if [h1, h2, m1, m2].iter().all(|b| b.is_ascii_digit()) =>
+        {
+            let value = |a: &u8, b: &u8| i64::from((a - b'0') * 10 + (b - b'0'));
+            let minutes = value(h1, h2) * 60 + value(m1, m2);
+            if *sign == b'+' {
+                minutes * 60
+            } else {
+                -minutes * 60
+            }
+        }
+        _ => return None,
+    };
+    // Days from civil date (Howard Hinnant's algorithm).
+    let y = if month <= 2 { year - 1 } else { year };
+    let era = y.div_euclid(400);
+    let yoe = y - era * 400;
+    let mp = (month + 9) % 12;
+    let doy = (153 * mp + 2) / 5 + day - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    let days = era * 146_097 + doe - 719_468;
+    let seconds = days * 86_400 + hour * 3600 + minute * 60 + second - offset;
+    u64::try_from(seconds).ok()
+}
+
+/// Warn this many days before the node key expires; after that the Mac drops off the tailnet.
+pub const KEY_EXPIRY_WARNING_DAYS: u64 = 30;
+
+/// `tailscale status --json --peers=false`. Warning texts are counted, never copied.
+pub fn tailscale_state(status: &Value, now: u64) -> Service {
+    let (Some(backend), Some(online)) = (
+        status["BackendState"].as_str(),
+        status["Self"]["Online"].as_bool(),
+    ) else {
+        return service(State::Unknown, "Invalid Tailscale status", json!({}));
+    };
+    let expiry = status["Self"]["KeyExpiry"]
+        .as_str()
+        .and_then(unix_from_rfc3339);
+    let days = expiry.map(|at| at.saturating_sub(now) / 86_400);
+    let warnings = status["Health"].as_array().map_or(0, Vec::len);
+    let details = json!({"backend_state": backend, "online": online, "key_expiry_unix": expiry,
+        "key_expires_in_days": days, "warnings": warnings});
+    let (state, summary) = if backend != "Running" {
+        (State::Down, format!("Not connected ({backend})"))
+    } else if expiry.is_some_and(|at| at <= now) {
+        (State::Down, "Node key expired".into())
+    } else if !online {
+        (State::Degraded, "Running, but not online".into())
+    } else if let Some(days) = days.filter(|d| *d < KEY_EXPIRY_WARNING_DAYS) {
+        (State::Degraded, format!("Key expires in {days}d"))
+    } else if warnings > 0 {
+        let plural = if warnings == 1 { "" } else { "s" };
+        (
+            State::Degraded,
+            format!("{warnings} Tailscale warning{plural}"),
+        )
+    } else {
+        let expiry = days.map_or("key expiry off".into(), |d| format!("key expires in {d}d"));
+        (State::Healthy, format!("Connected · {expiry}"))
+    };
+    service(state, summary, details)
+}
+
+/// Runs `program args`, returning stdout only if it exits successfully within `timeout`.
+fn run_with_deadline(program: &Path, args: &[&str], timeout: Duration) -> io::Result<Vec<u8>> {
+    let mut child = Command::new(program)
+        .args(args)
+        .env("LC_ALL", "C")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()?;
+    let mut stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| io::Error::other("No stdout"))?;
+    // Drain stdout concurrently so a large reply cannot block the child on a full pipe.
+    let reader = std::thread::spawn(move || {
+        let mut bytes = Vec::new();
+        let _ = (&mut stdout).take(256 * 1024 + 1).read_to_end(&mut bytes);
+        bytes
+    });
+    let deadline = Instant::now() + timeout;
+    let status = loop {
+        if let Some(status) = child.try_wait()? {
+            break status;
+        }
+        if Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(io::Error::other("Command timed out"));
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    };
+    let bytes = reader
+        .join()
+        .map_err(|_| io::Error::other("Reader failed"))?;
+    if !status.success() || bytes.len() > 256 * 1024 {
+        return Err(io::Error::other("Command failed"));
+    }
+    Ok(bytes)
+}
+
+fn tailscale(config: &Config) -> Service {
+    if !config.tailscale_cli.is_file() {
+        return service(State::Unknown, "Tailscale CLI not found", json!({}));
+    }
+    let status = run_with_deadline(
+        &config.tailscale_cli,
+        &["status", "--json", "--peers=false"],
+        Duration::from_secs(3),
+    )
+    .ok()
+    .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok());
+    match status {
+        Some(status) => tailscale_state(&status, now_unix()),
+        None => service(State::Unknown, "Tailscale status unavailable", json!({})),
+    }
+}
+
 pub fn check_health(config: &Config) -> Health {
     let jellyfin = match http_get(
         config.jellyfin_port,
@@ -239,5 +431,18 @@ pub fn check_health(config: &Config) -> Health {
         ci: processes()
             .map(|p| ci_state(&p, &config.runner_roots()))
             .unwrap_or_else(|_| service(State::Unknown, "Process check unavailable", json!({}))),
+        hermes: hermes_state(
+            http_get(
+                config.hermes_port,
+                "/api/status",
+                None,
+                Duration::from_secs(2),
+            )
+            .ok()
+            .and_then(|body| serde_json::from_slice::<Value>(&body).ok())
+            .as_ref(),
+            config.hermes_port,
+        ),
+        tailscale: tailscale(config),
     }
 }

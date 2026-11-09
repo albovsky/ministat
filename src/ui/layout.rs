@@ -5,7 +5,7 @@ pub(super) fn build(delegate: &Delegate) -> Dashboard {
     let item = NSStatusBar::systemStatusBar().statusItemWithLength(190.0);
     let panel = NSPanel::initWithContentRect_styleMask_backing_defer(
         NSPanel::alloc(mtm),
-        rect(0.0, 0.0, 360.0, 518.0),
+        rect(0.0, 0.0, 360.0, 588.0),
         NSWindowStyleMask::Titled
             | NSWindowStyleMask::Closable
             | NSWindowStyleMask::FullSizeContentView,
@@ -23,7 +23,7 @@ pub(super) fn build(delegate: &Delegate) -> Dashboard {
     panel.setMovableByWindowBackground(true);
     let content = NSVisualEffectView::initWithFrame(
         NSVisualEffectView::alloc(mtm),
-        rect(0.0, 0.0, 360.0, 518.0),
+        rect(0.0, 0.0, 360.0, 588.0),
     );
     content.setMaterial(NSVisualEffectMaterial::Popover);
     content.setBlendingMode(NSVisualEffectBlendingMode::BehindWindow);
@@ -41,7 +41,7 @@ pub(super) fn build(delegate: &Delegate) -> Dashboard {
     label(
         &content,
         "Ministat",
-        rect(24.0, 464.0, 180.0, 30.0),
+        rect(24.0, 534.0, 180.0, 30.0),
         22.0,
         false,
         mtm,
@@ -51,7 +51,7 @@ pub(super) fn build(delegate: &Delegate) -> Dashboard {
         label(
             &content,
             "STARTING",
-            rect(260.0, 472.0, 82.0, 16.0),
+            rect(260.0, 542.0, 82.0, 16.0),
             10.0,
             true,
             mtm,
@@ -62,7 +62,7 @@ pub(super) fn build(delegate: &Delegate) -> Dashboard {
         label(
             &content,
             "Waiting for collector",
-            rect(24.0, 444.0, 320.0, 18.0),
+            rect(24.0, 514.0, 320.0, 18.0),
             10.0,
             true,
             mtm,
@@ -72,7 +72,7 @@ pub(super) fn build(delegate: &Delegate) -> Dashboard {
         label(
             &content,
             title,
-            rect(x, 414.0, 140.0, 16.0),
+            rect(x, 484.0, 140.0, 16.0),
             10.0,
             true,
             mtm,
@@ -84,16 +84,16 @@ pub(super) fn build(delegate: &Delegate) -> Dashboard {
         };
         fields.insert(
             value_key,
-            label(&content, "—", rect(x, 374.0, 140.0, 42.0), 32.0, false, mtm),
+            label(&content, "—", rect(x, 444.0, 140.0, 42.0), 32.0, false, mtm),
         );
-        bars.insert(key, gauge(&content, rect(x, 366.0, 140.0, 5.0), mtm));
+        bars.insert(key, gauge(&content, rect(x, 436.0, 140.0, 5.0), mtm));
     }
     fields.insert(
         "memory_detail",
         label(
             &content,
             "",
-            rect(192.0, 345.0, 145.0, 16.0),
+            rect(192.0, 415.0, 145.0, 16.0),
             10.0,
             true,
             mtm,
@@ -101,19 +101,19 @@ pub(super) fn build(delegate: &Delegate) -> Dashboard {
     );
     fields.insert(
         "trend",
-        label(&content, "", rect(24.0, 343.0, 155.0, 17.0), 9.0, true, mtm),
+        label(&content, "", rect(24.0, 413.0, 155.0, 17.0), 9.0, true, mtm),
     );
     label(
         &content,
         "STORAGE",
-        rect(24.0, 313.0, 300.0, 16.0),
+        rect(24.0, 383.0, 300.0, 16.0),
         10.0,
         true,
         mtm,
     );
     for (key, title, detail, y) in [
-        ("internal", "Internal SSD", "internal_detail", 286.0),
-        ("external", "Media SSD", "external_detail", 231.0),
+        ("internal", "Internal SSD", "internal_detail", 356.0),
+        ("external", "Media SSD", "external_detail", 301.0),
     ] {
         label(
             &content,
@@ -132,15 +132,17 @@ pub(super) fn build(delegate: &Delegate) -> Dashboard {
     label(
         &content,
         "SERVICES",
-        rect(24.0, 188.0, 300.0, 16.0),
+        rect(24.0, 258.0, 300.0, 16.0),
         10.0,
         true,
         mtm,
     );
     for (key, title, y) in [
-        ("homekit", "HomeKit", 162.0),
-        ("jellyfin", "Jellyfin", 136.0),
-        ("ci", "CI", 110.0),
+        ("homekit", "HomeKit", 232.0),
+        ("jellyfin", "Jellyfin", 206.0),
+        ("ci", "CI", 180.0),
+        ("hermes", "Hermes", 154.0),
+        ("tailscale", "Tailscale", 128.0),
     ] {
         label(&content, title, rect(24.0, y, 76.0, 18.0), 12.0, false, mtm);
         fields.insert(
@@ -158,10 +160,14 @@ pub(super) fn build(delegate: &Delegate) -> Dashboard {
     label(
         &content,
         "CI checks local runners; GitHub connectivity unverified",
-        rect(24.0, 88.0, 320.0, 16.0),
+        rect(24.0, 106.0, 320.0, 16.0),
         9.0,
         true,
         mtm,
+    );
+    fields.insert(
+        "load",
+        label(&content, "", rect(24.0, 84.0, 312.0, 18.0), 11.0, true, mtm),
     );
     fields.insert(
         "pressure",

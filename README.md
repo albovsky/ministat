@@ -38,6 +38,9 @@ with `unknown`; old green results never masquerade as current health.
   at startup.
 - **CPU:** all-core system utilization, sampled every two seconds. The first
   sample is warming up. The panel shows about two minutes of recent CPU history.
+- **Load:** 1, 5 and 15-minute run-queue load averages next to the logical core
+  count. Sustained load well above the core count means work is waiting for a
+  core even when CPU utilization looks moderate.
 - **RAM:** app memory excluding purgeable pages, plus wired and compressed memory,
   using sysinfo's macOS definition. Available memory includes reclaimable pages
   and is not simply `total - used`. Pressure and swap give the useful context.
@@ -48,6 +51,14 @@ with `unknown`; old green results never masquerade as current health.
 - **HomeKit:** authenticated loopback device API, available/expected lights and
   a reachable HAP listener. The private bridge token never enters output.
 - **Jellyfin:** HTTP 200 and `Healthy` from loopback `/health`.
+- **Hermes:** HTTP 200 from loopback `/api/status` with `gateway_running` true
+  and `overall` `ok`. Another `overall` is degraded; a stopped gateway or no
+  answer is down.
+- **Tailscale:** `tailscale status --json --peers=false`, bounded to 3 seconds.
+  Healthy when the backend is `Running` and this node is online. Degraded when the
+  node is offline, the node key expires within 30 days, or Tailscale reports
+  warnings (counted, never copied). Down when not running or the key has expired,
+  because the Mac then drops off the tailnet.
 - **CI:** local Runner.Listener processes and descendant workers for every
   registered runner under `~/actions-runners` (a directory with both `.runner` and
   `bin/Runner.Listener`), rediscovered on each 30-second health check, at most 10.
@@ -71,7 +82,9 @@ configuration and restart the collector:
 {
   "external_mount": "/Volumes/Media",
   "homekit_data": "/Users/albovsky/Projects/govee-lights/data",
-  "jellyfin_port": 8096
+  "jellyfin_port": 8096,
+  "hermes_port": 9120,
+  "tailscale_cli": "/Applications/Tailscale.app/Contents/MacOS/Tailscale"
 }
 ```
 
@@ -79,7 +92,8 @@ Runners are discovered unless the file sets `runner_roots` to an explicit list o
 at most 10 absolute runner directories; `[]` turns the CI check off (`unknown`).
 
 Health HTTP requests go only to loopback with proxies and redirects disabled,
-2-second deadlines and a 256 KiB response cap. The collector has no restart,
+2-second deadlines and a 256 KiB response cap. The Tailscale CLI runs with a
+3-second deadline and the same output cap. The collector has no restart,
 light-control, workflow-dispatch or other service mutation command.
 
 ## Build and run

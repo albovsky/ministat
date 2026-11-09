@@ -64,3 +64,57 @@ fn a_second_collector_cannot_replace_the_live_collectors_state() {
     drop(first);
     assert!(CollectorLock::acquire(&path).is_ok());
 }
+
+#[test]
+fn snapshots_from_older_collectors_still_parse() {
+    let old = json!({
+        "schema_version": 1, "sampled_at_unix": 1, "boot_time_unix": 1, "collector_pid": 1,
+        "hostname": "mini", "uptime_seconds": 1, "awake_seconds": 1, "cpu_percent": null,
+        "cpu_history": [], "disks": [],
+        "memory": {"total_bytes": 1, "used_bytes": 1, "available_bytes": 1, "used_percent": 1.0,
+                   "swap_used_bytes": 0, "pressure": "normal"},
+        "health": {"sampled_at_unix": 1, "homekit": {"state": "healthy", "summary": "", "details": {}},
+                   "jellyfin": {"state": "healthy", "summary": "", "details": {}},
+                   "ci": {"state": "healthy", "summary": "", "details": {}}},
+    });
+    let snapshot: ministat::model::Snapshot = serde_json::from_value(old).unwrap();
+    assert!(snapshot.load.is_none());
+    assert_eq!(
+        snapshot.health.hermes.state,
+        ministat::model::State::Unknown
+    );
+    assert_eq!(
+        snapshot.health.tailscale.state,
+        ministat::model::State::Unknown
+    );
+}
+
+#[test]
+fn stale_health_hides_every_service_including_hermes_and_tailscale() {
+    use ministat::model::{Snapshot, State, StatusView};
+    let mut value = json!({
+        "schema_version": 1, "sampled_at_unix": 100, "boot_time_unix": 7, "collector_pid": 1,
+        "hostname": "mini", "uptime_seconds": 1, "awake_seconds": 1, "cpu_percent": 1.0,
+        "cpu_history": [], "disks": [], "disks_sampled_at_unix": 100,
+        "load": {"one_minute": 2.0, "five_minutes": 2.5, "fifteen_minutes": 3.0, "logical_cpus": 8},
+        "memory": {"total_bytes": 1, "used_bytes": 1, "available_bytes": 1, "used_percent": 1.0,
+                   "swap_used_bytes": 0, "pressure": "normal"},
+        "health": {"sampled_at_unix": 1},
+    });
+    for service in ["homekit", "jellyfin", "ci", "hermes", "tailscale"] {
+        value["health"][service] = json!({"state": "healthy", "summary": "ok", "details": {}});
+    }
+    let snapshot: Snapshot = serde_json::from_value(value).unwrap();
+    assert_eq!(snapshot.load.as_ref().unwrap().logical_cpus, 8);
+    let view = StatusView::new(snapshot, 100, 7);
+    let health = &view.snapshot.health;
+    for service in [
+        &health.homekit,
+        &health.jellyfin,
+        &health.ci,
+        &health.hermes,
+        &health.tailscale,
+    ] {
+        assert_eq!(service.state, State::Unknown);
+    }
+}

@@ -16,6 +16,19 @@ pub struct Config {
     pub runner_roots: Option<Vec<PathBuf>>,
     #[serde(skip)]
     pub runners_dir: PathBuf,
+    /// Loopback port of the Hermes web server, which serves `/api/status`.
+    #[serde(default = "default_hermes_port")]
+    pub hermes_port: u16,
+    /// Tailscale CLI, run as `status --json --peers=false`.
+    #[serde(default = "default_tailscale_cli")]
+    pub tailscale_cli: PathBuf,
+}
+
+fn default_hermes_port() -> u16 {
+    9120
+}
+fn default_tailscale_cli() -> PathBuf {
+    "/Applications/Tailscale.app/Contents/MacOS/Tailscale".into()
 }
 
 /// Most runners a health check reports, discovered or configured.
@@ -57,6 +70,8 @@ impl Config {
             jellyfin_port: 8096,
             runner_roots: None,
             runners_dir: home.join("actions-runners"),
+            hermes_port: default_hermes_port(),
+            tailscale_cli: default_tailscale_cli(),
         }
     }
     /// The runners to check now: the configured list, or those discovered.
@@ -80,6 +95,7 @@ impl Config {
         if !config.external_mount.is_absolute()
             || !plain(&config.external_mount)
             || !config.homekit_data.is_absolute()
+            || !config.tailscale_cli.is_absolute()
             || configured.len() > MAX_RUNNERS
             || configured.iter().any(|p| !p.is_absolute())
         {
