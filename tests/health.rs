@@ -178,3 +178,25 @@ fn tailscale_warns_before_expiry_and_is_down_once_disconnected_or_expired() {
     assert!(!warned.details.to_string().contains("private warning text"));
     assert_eq!(tailscale_state(&json!({}), NOW).state, State::Unknown);
 }
+
+#[test]
+fn tailscale_cli_runs_in_cli_mode_without_a_terminal() {
+    use std::os::unix::fs::PermissionsExt;
+    // Tailscale's macOS app binary only acts as a CLI when TERM is set. Without it,
+    // it tries to start the GUI and exits 0 with nothing on stdout, as under launchd.
+    let dir = tempfile::tempdir().unwrap();
+    let cli = dir.path().join("Tailscale");
+    std::fs::write(
+        &cli,
+        // `printenv`, not `$TERM`: sh sets an unexported TERM=dumb when it is unset.
+        "#!/bin/sh\nif [ -z \"$(printenv TERM)\" ]; then echo 'GUI failed to start' >&2; exit 0; fi\n\
+         echo '{\"BackendState\":\"Running\",\"Self\":{\"Online\":true,\"KeyExpiry\":null}}'\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&cli, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let mut config = ministat::config::Config::for_home(dir.path());
+    config.tailscale_cli = cli;
+    let service = ministat::health::tailscale_health(&config);
+    assert_eq!(service.state, State::Healthy, "{}", service.summary);
+    assert_eq!(service.summary, "Connected · key expiry off");
+}
