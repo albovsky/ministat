@@ -118,6 +118,9 @@ directory to `ministat menu --preview --state-dir /tmp/ministat-preview`.
 `./script/build_and_run.sh --snapshot panel.png --state-dir /tmp/ministat-preview`
 renders the panel to a PNG under the current appearance and exits, for design
 review on a Mac that has no screen or runs no collector.
+[`docs/panel.png`](docs/panel.png) and [`docs/panel-degraded.png`](docs/panel-degraded.png)
+are such renders (gauges draw grey in an off-screen cache; on screen they use
+the accent color).
 
 ## Install, update and disable
 
