@@ -1,9 +1,9 @@
 # Repository instructions
 
-## CI resources
+## CI
 
-Run all Actions jobs on the repository-scoped Mac mini pool. Never add
-GitHub-hosted runners or hosted fallbacks, GitHub artifact uploads, or Actions
-caches. Keep tools/build caches on the Mini and preserve the owner/source
-gates. See [CI operations](docs/ci.md). Run
+This repository is public. Run every Actions job on GitHub-hosted
+`macos-latest`; never add self-hosted runners, `pull_request_target`, or write
+permissions for PR code. Artifact uploads and Actions caches stay disallowed
+unless deliberately reviewed. See [CI](docs/ci.md). Run
 `ruby scripts/verify_ci_resource_policy.rb` before publishing workflow changes.

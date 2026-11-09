@@ -4,7 +4,9 @@ require 'yaml'
 require 'pathname'
 
 module CIResourcePolicy
-  POOLS = [%w[self-hosted macOS ARM64 ministat-ci]].freeze
+  # Public repository: only GitHub-hosted macOS. Self-hosted runners would let
+  # pull-request code execute on the owner's machine.
+  POOLS = ['macos-latest'].freeze
   # Changing these pins requires reviewing the action's artifact/cache behavior.
   ACTIONS = ['actions/checkout@11d5960a326750d5838078e36cf38b85af677262'].freeze
   module_function
@@ -37,7 +39,7 @@ module CIResourcePolicy
     paths.each do |path|
       document = YAML.safe_load(File.read(path),aliases:false)
       document.fetch('jobs').each do |name,job|
-        raise "#{path}: #{name} must use an explicit approved Mini pool" unless POOLS.include?(job['runs-on']) && !job.key?('uses')
+        raise "#{path}: #{name} must use an approved GitHub-hosted runner" unless POOLS.include?(job['runs-on']) && !job.key?('uses')
         steps!(job['steps'],root,[])
       end
     end
@@ -46,7 +48,7 @@ end
 if $PROGRAM_NAME == __FILE__
   begin
     CIResourcePolicy.check(ARGV.fetch(0,File.expand_path('..',__dir__)))
-    puts 'CI resource policy passed: Mini execution and local evidence only.'
+    puts 'CI resource policy passed: GitHub-hosted runners and approved actions only.'
   rescue StandardError => error
     warn "CI resource policy: #{error.message}"
     exit 1
