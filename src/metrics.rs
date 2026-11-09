@@ -1,4 +1,4 @@
-use crate::model::{Disk, Health, Memory, SCHEMA_VERSION, Snapshot, now_unix};
+use crate::model::{Disk, Health, Load, Memory, SCHEMA_VERSION, Snapshot, now_unix};
 use std::{
     collections::VecDeque,
     ffi::{CStr, CString},
@@ -113,6 +113,13 @@ impl Sampler {
                 self.history.pop_front();
             }
         }
+        let average = System::load_average();
+        let load = Load {
+            one_minute: average.one,
+            five_minutes: average.five,
+            fifteen_minutes: average.fifteen,
+            logical_cpus: self.system.cpus().len(),
+        };
         let total = self.system.total_memory();
         let used = self.system.used_memory();
         Snapshot {
@@ -125,6 +132,7 @@ impl Sampler {
             awake_seconds: awake_seconds(),
             cpu_percent: cpu,
             cpu_history: self.history.iter().copied().collect(),
+            load: Some(load),
             memory: Memory {
                 total_bytes: total,
                 used_bytes: used,

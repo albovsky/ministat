@@ -94,13 +94,14 @@ impl Dashboard {
                 "internal_detail",
                 "external_detail",
                 "pressure",
+                "load",
                 "trend",
             ] {
                 self.text(key, "—");
             }
             self.text("live", "OFFLINE");
             self.text("subtitle", "Waiting for the boot collector");
-            for key in ["homekit", "jellyfin", "ci"] {
+            for key in ["homekit", "jellyfin", "ci", "hermes", "tailscale"] {
                 self.text(key, "○  Waiting for collector");
             }
             for bar in self.bars.values() {
@@ -229,6 +230,8 @@ impl Dashboard {
             ("homekit", &s.health.homekit),
             ("jellyfin", &s.health.jellyfin),
             ("ci", &s.health.ci),
+            ("hermes", &s.health.hermes),
+            ("tailscale", &s.health.tailscale),
         ] {
             let icon = match service.state {
                 State::Healthy => "●",
@@ -252,6 +255,16 @@ impl Dashboard {
                 s.memory.pressure,
                 s.memory.swap_used_bytes as f64 / 1048576.0
             ),
+        );
+        self.text(
+            "load",
+            &match (&s.load, current) {
+                (Some(load), true) => format!(
+                    "Load {:.2} · {:.2} · {:.2} · {} cores",
+                    load.one_minute, load.five_minutes, load.fifteen_minutes, load.logical_cpus
+                ),
+                _ => "Load —".into(),
+            },
         );
         let chars = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
         let trend: String = s

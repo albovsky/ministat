@@ -112,20 +112,21 @@ fn execute(args: &[String], json_output: bool) -> Result<i32, (&'static str, Str
             let health_stale = view.health_freshness != Freshness::Current
                 || view.disks_freshness != Freshness::Current;
             let s = &view.snapshot;
-            let unhealthy = [&s.health.homekit, &s.health.jellyfin, &s.health.ci]
+            let unhealthy = s
+                .health
+                .services()
                 .iter()
-                .any(|service| service.state != State::Healthy)
+                .any(|(_, service)| service.state != State::Healthy)
                 || s.disks.iter().any(|d| !d.mounted);
             if json_output {
                 println!("{}", serde_json::to_string_pretty(&view).unwrap());
             } else if command == "health" {
+                for (name, service) in s.health.services() {
+                    println!("{name}: {}", service.summary);
+                }
                 println!(
-                    "HomeKit: {}\nJellyfin: {}\nCI: {}\nCollector: {:?} · {}s old",
-                    s.health.homekit.summary,
-                    s.health.jellyfin.summary,
-                    s.health.ci.summary,
-                    view.freshness,
-                    view.age_seconds
+                    "Collector: {:?} · {}s old",
+                    view.freshness, view.age_seconds
                 );
             } else {
                 println!(
@@ -138,6 +139,12 @@ fn execute(args: &[String], json_output: bool) -> Result<i32, (&'static str, Str
                     s.memory.used_percent,
                     view.freshness
                 );
+                if let Some(load) = &s.load {
+                    println!(
+                        "Load: {:.2} · {:.2} · {:.2} (1, 5, 15 min; {} cores)",
+                        load.one_minute, load.five_minutes, load.fifteen_minutes, load.logical_cpus
+                    );
+                }
                 for disk in &s.disks {
                     println!(
                         "{}: {}",
