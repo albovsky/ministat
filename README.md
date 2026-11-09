@@ -48,7 +48,10 @@ with `unknown`; old green results never masquerade as current health.
 - **HomeKit:** authenticated loopback device API, available/expected lights and
   a reachable HAP listener. The private bridge token never enters output.
 - **Jellyfin:** HTTP 200 and `Healthy` from loopback `/health`.
-- **CI:** the configured local Runner.Listener processes and descendant workers.
+- **CI:** local Runner.Listener processes and descendant workers for every
+  registered runner under `~/actions-runners` (a directory with both `.runner` and
+  `bin/Runner.Listener`), rediscovered on each 30-second health check, at most 10.
+  A runner removed with `config.sh remove` loses `.runner` and drops out.
   Local readiness does **not** verify GitHub connectivity, runner registration,
   queue state or workflow success. JSON explicitly says `unverified`.
 
@@ -68,13 +71,12 @@ configuration and restart the collector:
 {
   "external_mount": "/Volumes/Media",
   "homekit_data": "/Users/albovsky/Projects/govee-lights/data",
-  "jellyfin_port": 8096,
-  "runner_roots": [
-    "/Users/albovsky/actions-runners/pett-macmini-simple",
-    "/Users/albovsky/actions-runners/pett-review"
-  ]
+  "jellyfin_port": 8096
 }
 ```
+
+Runners are discovered unless the file sets `runner_roots` to an explicit list of
+at most 10 absolute runner directories; `[]` turns the CI check off (`unknown`).
 
 Health HTTP requests go only to loopback with proxies and redirects disabled,
 2-second deadlines and a 256 KiB response cap. The collector has no restart,

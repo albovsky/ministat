@@ -237,7 +237,7 @@ pub fn check_health(config: &Config) -> Health {
         homekit: homekit(config),
         jellyfin,
         ci: processes()
-            .map(|p| ci_state(&p, &config.runner_roots))
+            .map(|p| ci_state(&p, &config.runner_roots()))
             .unwrap_or_else(|_| service(State::Unknown, "Process check unavailable", json!({}))),
     }
 }
