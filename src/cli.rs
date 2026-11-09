@@ -50,7 +50,7 @@ fn execute(args: &[String], json_output: bool) -> Result<i32, (&'static str, Str
     let command = args.first().map(String::as_str).unwrap_or("menu");
     if matches!(command, "--help" | "help" | "-h") {
         println!(
-            "Ministat 0.1.0\n\nCommands:\n  menu                       Native menu-bar app\n  collect [--once]            Collect every 2 seconds (boot service)\n  status [--json]             Latest metrics and service health\n  health [--json]             Read-only health report; exit 1 if degraded\n  processes [--limit N] [--json]  Top CPU consumers (on demand)\n\nOptions: --state-dir PATH  --config PATH\nExit codes: 0 current/healthy, 1 degraded health, 2 unavailable/stale/error."
+            "Ministat 0.1.0\n\nCommands:\n  menu [--preview] [--snapshot PNG]  Native menu-bar app; --snapshot renders the panel and exits\n  collect [--once]            Collect every 2 seconds (boot service)\n  status [--json]             Latest metrics and service health\n  health [--json]             Read-only health report; exit 1 if degraded\n  processes [--limit N] [--json]  Top CPU consumers (on demand)\n\nOptions: --state-dir PATH  --config PATH\nExit codes: 0 current/healthy, 1 degraded health, 2 unavailable/stale/error."
         );
         return Ok(0);
     }
@@ -58,6 +58,7 @@ fn execute(args: &[String], json_output: bool) -> Result<i32, (&'static str, Str
     let mut config_path = None;
     let mut once = false;
     let mut preview = false;
+    let mut snapshot = None;
     let mut limit = 5;
     let mut i = 1;
     while i < args.len() {
@@ -65,6 +66,14 @@ fn execute(args: &[String], json_output: bool) -> Result<i32, (&'static str, Str
             "--json" => {}
             "--once" if command == "collect" => once = true,
             "--preview" if command == "menu" => preview = true,
+            "--snapshot" if command == "menu" => {
+                i += 1;
+                let value = args
+                    .get(i)
+                    .ok_or_else(|| invalid("Missing path after option"))?;
+                preview = true;
+                snapshot = Some(PathBuf::from(value));
+            }
             "--state-dir" | "--config" => {
                 let flag = &args[i];
                 i += 1;
@@ -98,7 +107,7 @@ fn execute(args: &[String], json_output: bool) -> Result<i32, (&'static str, Str
             Ok(0)
         }
         "menu" => {
-            crate::ui::run(dir, preview);
+            crate::ui::run(dir, preview, snapshot);
             Ok(0)
         }
         "status" | "health" => {

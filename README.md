@@ -115,6 +115,9 @@ ID/notarization). Production is menu-only. `--preview` adds a Dock presence and
 keeps the native panel visible for UI inspection. An isolated local collector
 can run with `ministat collect --state-dir /tmp/ministat-preview`; pass the same
 directory to `ministat menu --preview --state-dir /tmp/ministat-preview`.
+`./script/build_and_run.sh --snapshot panel.png --state-dir /tmp/ministat-preview`
+renders the panel to a PNG under the current appearance and exits, for design
+review on a Mac that has no screen or runs no collector.
 
 ## Install, update and disable
 
