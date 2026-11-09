@@ -14,7 +14,7 @@ sysinfo = { version = "0.39", default-features = false, features = ["system"] }
 ureq = { version = "3", default-features = false }
 objc2 = "0.6"
 objc2-foundation = { version = "0.3", features = ["NSTimer", "NSRunLoop"] }
-objc2-app-kit = { version = "0.3", default-features = false, features = ["objc2-core-foundation", "NSApplication", "NSRunningApplication", "NSResponder", "NSStatusBar", "NSStatusItem", "NSStatusBarButton", "NSButton", "NSControl", "NSView", "NSMenu", "NSMenuItem", "NSFont", "NSFontDescriptor", "NSAttributedString", "NSStringDrawing", "NSColor", "NSPanel", "NSWindow", "NSScreen", "NSTextField", "NSGraphics", "NSCell", "NSButtonCell", "NSPasteboard", "NSWorkspace", "NSImage", "NSBezierPath", "NSVisualEffectView", "NSProgressIndicator"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["objc2-core-foundation", "NSApplication", "NSRunningApplication", "NSResponder", "NSStatusBar", "NSStatusItem", "NSStatusBarButton", "NSButton", "NSControl", "NSView", "NSMenu", "NSMenuItem", "NSFont", "NSFontDescriptor", "NSAttributedString", "NSStringDrawing", "NSColor", "NSPanel", "NSWindow", "NSScreen", "NSTextField", "NSGraphics", "NSCell", "NSButtonCell", "NSPasteboard", "NSWorkspace", "NSImage", "NSBezierPath", "NSVisualEffectView", "NSProgressIndicator", "NSBox", "NSImageView", "NSText", "NSParagraphStyle", "NSBitmapImageRep", "NSImageRep"] }
 
 [dev-dependencies]
 tempfile = "3"

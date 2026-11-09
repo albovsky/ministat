@@ -5,6 +5,8 @@ pub(super) struct Dashboard {
     pub(super) panel: Retained<NSPanel>,
     pub(super) fields: HashMap<&'static str, Retained<NSTextField>>,
     pub(super) bars: HashMap<&'static str, Retained<NSProgressIndicator>>,
+    pub(super) dots: HashMap<&'static str, Retained<NSImageView>>,
+    pub(super) preview: bool,
     pub(super) last_status: RefCell<Vec<String>>,
 }
 impl Dashboard {
@@ -84,130 +86,155 @@ impl Dashboard {
             }
         }
     }
+    fn color(&self, key: &str, color: &NSColor) {
+        if let Some(field) = self.fields.get(key) {
+            field.setTextColor(Some(color));
+        }
+    }
+    fn dot(&self, key: &str, state: State) {
+        let color = match state {
+            State::Healthy => NSColor::systemGreenColor(),
+            State::Degraded => NSColor::systemOrangeColor(),
+            State::Down => NSColor::systemRedColor(),
+            State::Unknown => NSColor::tertiaryLabelColor(),
+        };
+        if let Some(dot) = self.dots.get(key) {
+            dot.setContentTintColor(Some(&color));
+        }
+    }
+    fn render_offline(&self) {
+        self.paint_status(vec!["—".into(); 5]);
+        self.text("host", "Ministat");
+        self.text("live", "OFFLINE");
+        self.color("live", &NSColor::systemRedColor());
+        self.text("subtitle", "Waiting for the boot collector");
+        self.text("cpu_heading", "CPU");
+        self.text("ram_heading", "MEMORY");
+        self.color("ram_value", &NSColor::labelColor());
+        for key in [
+            "cpu_value",
+            "ram_value",
+            "cpu_detail",
+            "ram_detail",
+            "internal_detail",
+            "external_detail",
+        ] {
+            self.text(key, "—");
+        }
+        for (key, _) in layout::SERVICES {
+            self.text(key, "Waiting for collector");
+            self.dot(key, State::Unknown);
+        }
+        for bar in self.bars.values() {
+            bar.setDoubleValue(0.0);
+        }
+    }
     pub(super) fn render(&self, view: Result<StatusView, std::io::Error>) {
         let Ok(view) = view else {
-            self.paint_status(vec!["—".into(); 5]);
-            for key in [
-                "cpu_value",
-                "ram_value",
-                "memory_detail",
-                "internal_detail",
-                "external_detail",
-                "pressure",
-                "load",
-                "trend",
-            ] {
-                self.text(key, "—");
-            }
-            self.text("live", "OFFLINE");
-            self.text("subtitle", "Waiting for the boot collector");
-            for key in ["homekit", "jellyfin", "ci", "hermes", "tailscale"] {
-                self.text(key, "○  Waiting for collector");
-            }
-            for bar in self.bars.values() {
-                bar.setDoubleValue(0.0);
-            }
+            self.render_offline();
             return;
         };
         let current = view.freshness == Freshness::Current;
         let s = &view.snapshot;
         let disk_current = current && view.disks_freshness == Freshness::Current;
+        let percent = |value: Option<f64>| {
+            value
+                .filter(|_| current)
+                .map(|n| format!("{n:.0}%"))
+                .unwrap_or_else(|| "—".into())
+        };
+        let cpu = percent(s.cpu_percent.map(f64::from));
+        let ram = percent(Some(s.memory.used_percent));
+        let disk_cell = |disk: &crate::model::Disk| {
+            if !disk_current {
+                "—".into()
+            } else {
+                disk.used_percent
+                    .map(|n| format!("{n:.0}%"))
+                    .unwrap_or_else(|| "OFF".into())
+            }
+        };
         self.paint_status(vec![
-            if current {
-                s.cpu_percent
-                    .map(|n| format!("{n:.0}%"))
-                    .unwrap_or_else(|| "—".into())
-            } else {
-                "—".into()
-            },
-            if current {
-                format!("{:.0}%", s.memory.used_percent)
-            } else {
-                "—".into()
-            },
-            if disk_current {
-                s.disks[0]
-                    .used_percent
-                    .map(|n| format!("{n:.0}%"))
-                    .unwrap_or_else(|| "OFF".into())
-            } else {
-                "—".into()
-            },
-            if disk_current {
-                s.disks[1]
-                    .used_percent
-                    .map(|n| format!("{n:.0}%"))
-                    .unwrap_or_else(|| "OFF".into())
-            } else {
-                "—".into()
-            },
+            cpu.clone(),
+            ram.clone(),
+            disk_cell(&s.disks[0]),
+            disk_cell(&s.disks[1]),
             if current {
                 compact_duration_label(s.uptime_seconds)
             } else {
                 "STALE".into()
             },
         ]);
-        if !self.panel.isVisible() {
+        if !self.preview && !self.panel.isVisible() {
             return;
         }
-        self.text("up", &duration_label(s.uptime_seconds));
-        let cpu = s
-            .cpu_percent
-            .map(|n| format!("{n:.0}%"))
-            .unwrap_or_else(|| "—".into());
-        self.text("cpu", if current { &cpu } else { "—" });
-        self.text(
-            "ram",
-            &if current {
-                format!("{:.0}%", s.memory.used_percent)
-            } else {
-                "—".into()
-            },
-        );
-        self.text("cpu_value", if current { &cpu } else { "—" });
-        self.text(
-            "ram_value",
-            &if current {
-                format!("{:.0}%", s.memory.used_percent)
-            } else {
-                "—".into()
-            },
-        );
+        self.text("host", &s.hostname);
         self.text(
             "subtitle",
             &format!(
-                "{} · up {} · awake {}",
-                s.hostname,
+                "up {} · awake {}",
                 duration_label(s.uptime_seconds),
                 duration_label(s.awake_seconds)
             ),
         );
-        self.text("live", if current { "LIVE · 2s" } else { "STALE" });
+        if current {
+            self.text("live", "LIVE");
+            self.color("live", &NSColor::systemGreenColor());
+        } else {
+            self.text("live", "STALE");
+            self.color("live", &NSColor::systemOrangeColor());
+        }
+        self.text("cpu_value", &cpu);
+        self.text("ram_value", &ram);
         self.text(
-            "memory_detail",
-            &format!(
-                "{:.1} / {:.0} GiB used",
-                s.memory.used_bytes as f64 / 1073741824.0,
-                s.memory.total_bytes as f64 / 1073741824.0
-            ),
+            "cpu_heading",
+            &match &s.load {
+                Some(load) => format!("CPU · {} CORES", load.logical_cpus),
+                None => "CPU".into(),
+            },
         );
-        for (index, (disk, key, detail, bar_key)) in [
-            (&s.disks[0], "int", "internal_detail", "internal"),
-            (&s.disks[1], "ext", "external_detail", "external"),
+        self.text(
+            "cpu_detail",
+            &match (&s.load, current) {
+                (Some(load), true) => format!(
+                    "Load {:.2} · {:.2} · {:.2}",
+                    load.one_minute, load.five_minutes, load.fifteen_minutes
+                ),
+                _ => "Load —".into(),
+            },
+        );
+        let (ram_heading, ram_color) = match s.memory.pressure.as_str() {
+            "warning" if current => ("MEMORY · WARNING", NSColor::systemOrangeColor()),
+            "critical" if current => ("MEMORY · CRITICAL", NSColor::systemRedColor()),
+            _ => ("MEMORY", NSColor::labelColor()),
+        };
+        self.text("ram_heading", ram_heading);
+        self.color("ram_value", &ram_color);
+        let swap = s.memory.swap_used_bytes as f64 / 1073741824.0;
+        self.text(
+            "ram_detail",
+            &if current {
+                format!(
+                    "{:.1} of {:.0} GiB · swap {}",
+                    s.memory.used_bytes as f64 / 1073741824.0,
+                    s.memory.total_bytes as f64 / 1073741824.0,
+                    if swap >= 1.0 {
+                        format!("{swap:.1} GiB")
+                    } else {
+                        format!("{:.0} MiB", swap * 1024.0)
+                    }
+                )
+            } else {
+                "—".into()
+            },
+        );
+        for (index, (disk, detail, bar_key)) in [
+            (&s.disks[0], "internal_detail", "internal"),
+            (&s.disks[1], "external_detail", "external"),
         ]
         .into_iter()
         .enumerate()
         {
-            self.text(
-                key,
-                &if !current {
-                    "—".into()
-                } else {
-                    disk.used_percent
-                        .map(|n| format!("{n:.0}%"))
-                        .unwrap_or_else(|| "OFF".into())
-                },
-            );
             self.text(
                 detail,
                 &if !disk_current {
@@ -233,50 +260,12 @@ impl Dashboard {
             ("hermes", &s.health.hermes),
             ("tailscale", &s.health.tailscale),
         ] {
-            let icon = match service.state {
-                State::Healthy => "●",
-                State::Degraded => "◐",
-                State::Down => "●",
-                State::Unknown => "○",
-            };
-            self.text(key, &format!("{icon}  {}", service.summary));
-            let color = match service.state {
-                State::Healthy => NSColor::secondaryLabelColor(),
-                State::Degraded => NSColor::systemOrangeColor(),
-                State::Down => NSColor::systemRedColor(),
-                State::Unknown => NSColor::tertiaryLabelColor(),
-            };
-            self.fields[key].setTextColor(Some(&color));
+            self.text(key, &service.summary);
+            self.dot(key, service.state);
         }
-        self.text(
-            "pressure",
-            &format!(
-                "Pressure {} · swap {:.0} MiB",
-                s.memory.pressure,
-                s.memory.swap_used_bytes as f64 / 1048576.0
-            ),
-        );
-        self.text(
-            "load",
-            &match (&s.load, current) {
-                (Some(load), true) => format!(
-                    "Load {:.2} · {:.2} · {:.2} · {} cores",
-                    load.one_minute, load.five_minutes, load.fifteen_minutes, load.logical_cpus
-                ),
-                _ => "Load —".into(),
-            },
-        );
-        let chars = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
-        let trend: String = s
-            .cpu_history
-            .iter()
-            .step_by(2)
-            .map(|v| chars[((*v as usize * 7) / 100).min(7)])
-            .collect();
-        self.text("trend", &trend);
         for (key, value) in [
             ("cpu", s.cpu_percent.unwrap_or(0.0) as f64),
-            ("memory", s.memory.used_percent),
+            ("ram", s.memory.used_percent),
         ] {
             self.bars[key].setDoubleValue(if current { value } else { 0.0 });
         }

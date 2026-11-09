@@ -14,28 +14,37 @@ use objc2_foundation::{
     MainThreadMarker, NSDictionary, NSNotification, NSObject, NSObjectProtocol, NSPoint, NSRect,
     NSSize, NSString, NSTimer,
 };
-use std::{cell::RefCell, collections::HashMap, path::PathBuf};
+use std::{
+    cell::RefCell,
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
 
 fn rect(x: f64, y: f64, w: f64, h: f64) -> NSRect {
     NSRect::new(NSPoint::new(x, y), NSSize::new(w, h))
+}
+#[derive(Clone, Copy)]
+enum Tone {
+    Primary,
+    Secondary,
 }
 fn label(
     view: &NSView,
     title: &str,
     frame: NSRect,
     size: f64,
-    secondary: bool,
+    weight: f64,
+    tone: Tone,
     mtm: MainThreadMarker,
 ) -> Retained<NSTextField> {
     let field = NSTextField::labelWithString(&NSString::from_str(title), mtm);
     field.setFrame(frame);
     field.setFont(Some(&NSFont::monospacedDigitSystemFontOfSize_weight(
-        size, 0.0,
+        size, weight,
     )));
-    let color = if secondary {
-        NSColor::secondaryLabelColor()
-    } else {
-        NSColor::labelColor()
+    let color = match tone {
+        Tone::Primary => NSColor::labelColor(),
+        Tone::Secondary => NSColor::secondaryLabelColor(),
     };
     field.setTextColor(Some(&color));
     // SAFETY: all views are main-thread AppKit objects owned throughout their use.
@@ -58,6 +67,7 @@ use dashboard::Dashboard;
 struct Ivars {
     state_dir: PathBuf,
     preview: bool,
+    snapshot: Option<PathBuf>,
     dashboard: RefCell<Option<Dashboard>>,
 }
 define_class!(
@@ -78,6 +88,10 @@ define_class!(
             unsafe { NSTimer::scheduledTimerWithTimeInterval_target_selector_userInfo_repeats(
                 2.0, self, sel!(tick:), None, true).setTolerance(0.3); }
             if self.ivars().preview { self.show(); }
+            if let Some(path) = &self.ivars().snapshot {
+                let code = if self.snapshot(path) { 0 } else { 2 };
+                std::process::exit(code);
+            }
         }
     }
     impl Delegate {
@@ -127,12 +141,19 @@ impl Delegate {
                     .screen()
                     .map(|s| s.visibleFrame())
                     .unwrap_or(rect(0.0, 0.0, 1440.0, 900.0));
-                let x = (anchor.origin.x + anchor.size.width - 360.0).clamp(
+                let x = (anchor.origin.x + anchor.size.width - layout::WIDTH).clamp(
                     screen.origin.x,
-                    (screen.origin.x + screen.size.width - 360.0).max(screen.origin.x),
+                    (screen.origin.x + screen.size.width - layout::WIDTH).max(screen.origin.x),
                 );
-                ui.panel
-                    .setFrame_display(rect(x, anchor.origin.y - 546.0, 360.0, 540.0), true);
+                ui.panel.setFrame_display(
+                    rect(
+                        x,
+                        anchor.origin.y - layout::HEIGHT - 6.0,
+                        layout::WIDTH,
+                        layout::HEIGHT,
+                    ),
+                    true,
+                );
             }
             #[allow(deprecated)]
             NSApplication::sharedApplication(mtm).activateIgnoringOtherApps(true);
@@ -143,15 +164,62 @@ impl Delegate {
     fn setup(&self) {
         *self.ivars().dashboard.borrow_mut() = Some(layout::build(self));
     }
+    /// Render the panel's content to a PNG for design review, without a screen.
+    fn snapshot(&self, path: &Path) -> bool {
+        let Some(ui) = self
+            .ivars()
+            .dashboard
+            .borrow()
+            .as_ref()
+            .map(|ui| ui.panel.clone())
+        else {
+            return false;
+        };
+        let Some(content) = ui.contentView() else {
+            return false;
+        };
+        let bounds = content.bounds();
+        let Some(cached) = content.bitmapImageRepForCachingDisplayInRect(bounds) else {
+            return false;
+        };
+        content.cacheDisplayInRect_toBitmapImageRep(bounds, &cached);
+        // The vibrancy backdrop is not part of an off-screen cache, so paint the
+        // window background underneath it.
+        let image = NSImage::initWithSize(NSImage::alloc(), bounds.size);
+        #[allow(deprecated)]
+        image.lockFocus();
+        NSColor::windowBackgroundColor().set();
+        NSBezierPath::fillRect(bounds);
+        cached.drawInRect(bounds);
+        #[allow(deprecated)]
+        image.unlockFocus();
+        let Some(bitmap) = image
+            .TIFFRepresentation()
+            .and_then(|tiff| NSBitmapImageRep::imageRepWithData(&tiff))
+        else {
+            return false;
+        };
+        // SAFETY: PNG takes no required properties; an empty dictionary is documented as valid.
+        let Some(png) = (unsafe {
+            bitmap.representationUsingType_properties(
+                NSBitmapImageFileType::PNG,
+                &NSDictionary::new(),
+            )
+        }) else {
+            return false;
+        };
+        png.writeToFile_atomically(&NSString::from_str(&path.to_string_lossy()), true)
+    }
 }
 
-pub fn run(state_dir: PathBuf, preview: bool) {
+pub fn run(state_dir: PathBuf, preview: bool, snapshot: Option<PathBuf>) {
     let mtm = MainThreadMarker::new().expect("AppKit must run on main thread");
     let app = NSApplication::sharedApplication(mtm);
     app.setActivationPolicy(NSApplicationActivationPolicy::Accessory);
     let this = Delegate::alloc(mtm).set_ivars(Ivars {
         state_dir,
         preview,
+        snapshot,
         dashboard: RefCell::new(None),
     });
     let delegate: Retained<Delegate> = unsafe { msg_send![super(this), init] };

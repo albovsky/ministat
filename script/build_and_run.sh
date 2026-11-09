@@ -12,7 +12,8 @@ case "$MODE" in
   --verify) /usr/bin/open -n "$APP" --args menu --preview
     sleep 1; /usr/bin/pgrep -f "^$APP/Contents/MacOS/ministat" >/dev/null ;;
   --debug) /usr/bin/lldb -- "$APP/Contents/MacOS/ministat" menu --preview ;;
+  --snapshot) shift; exec "$APP/Contents/MacOS/ministat" menu --snapshot "$@" ;;
   --logs|--telemetry) /usr/bin/open -n "$APP"
     /usr/bin/log stream --style compact --predicate 'process == "ministat"' ;;
-  *) echo 'Usage: build_and_run.sh [--preview|--verify|--debug|--logs|--telemetry]' >&2; exit 2 ;;
+  *) echo 'Usage: build_and_run.sh [--preview|--verify|--debug|--logs|--telemetry|--snapshot PNG [--state-dir DIR]]' >&2; exit 2 ;;
 esac
